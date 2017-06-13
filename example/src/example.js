@@ -1,15 +1,15 @@
-var React = require('react');
-var ReactDOM = require('react-dom');
-var AudioRecorder = require('react-audio-recorder');
+import React from 'react'
+import ReactDOM from 'react-dom'
+import HotMic from 'hot-mic'
 
-var App = React.createClass({
+class App extends React.Component {
   render () {
     return (
       <div>
-        <AudioRecorder />
+        <HotMic/>
       </div>
-    );
+    )
   }
-});
+}
 
 ReactDOM.render(<App />, document.getElementById('app'));

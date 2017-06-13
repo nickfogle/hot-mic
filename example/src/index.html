@@ -1,20 +1,29 @@
 <!doctype html>
 <head>
-  <title>Audio Recorder</title>
+  <title>Hot Mic</title>
   <link rel="stylesheet" href="example.css">
+  <style>
+  .player {
+    background: #ddd;
+    padding-bottom: 0;
+  }
+  .progress {
+    width: 0px;
+    height: 8px;
+    background: red;
+    transition: width .1s linear;
+  }
+</style>
 </head>
 <body>
   <div class="container">
-    <h1>Audio Recorder</h1>
-    <h2><a href="https://github.com/kremonte/react-audio-recorder">View project on GitHub</a></h2>
-    <!-- the example app is rendered into this div -->
-    <div id="app"></div>
+    <h1>Hot Mic Audio Recorder</h1>
+    <h2>View project on <a href="https://github.com/nickfogle/hot-mic">GitHub</a></h2>
     <div class="hint">
-      <!-- put any hints about your component example here -->
+      <p>Requires getUserMedia() support</p>
     </div>
-    <div class="footer">
-      Copyright &copy; 2015 Dan Rouse.
-    </div>
+    <div id="app"></div>
+    <div class="footer">Copyright &copy; 2017 Nick Fogle.</div>
   </div>
   <script src="common.js"></script>
   <script src="bundle.js"></script>
