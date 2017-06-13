@@ -1,55 +1,46 @@
-import React, { Component, PropTypes } from 'react';
-import encodeWAV from './wav-encoder.js';
+import React, { Component } from 'react'
+import PropTypes from 'prop-types';
+import encodeWAV from './wav-encoder.js'
 
-class AudioRecorder extends Component {
+
+class HotMic extends React.Component {
   constructor(props) {
     super(props);
-
     this.buffers = [[], []];
     this.bufferLength = 0;
     this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
     this.sampleRate = this.audioContext.sampleRate;
     this.recordingStream = null;
     this.playbackSource = null;
-
-    this.state = {
-      recording: false,
-      playing: false,
-      audio: props.audio
-    };
+    this.audioFile = null;
+    this.timer = null;
+    this.percent = 0;
+    this.state = { recording: false, playing: false, audio: props.audio };
   }
 
   startRecording() {
-    navigator.getUserMedia = navigator.getUserMedia ||
-                          navigator.webkitGetUserMedia ||
-                          navigator.mozGetUserMedia ||
-                          navigator.msGetUserMedia;
+    navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia;
     navigator.getUserMedia({ audio: true }, (stream) => {
       const gain = this.audioContext.createGain();
       const audioSource = this.audioContext.createMediaStreamSource(stream);
       audioSource.connect(gain);
-
       const bufferSize = 2048;
       const recorder = this.audioContext.createScriptProcessor(bufferSize, 2, 2);
       recorder.onaudioprocess = (event) => {
-        // save left and right buffers
-        for(let i = 0; i < 2; i++) {
+        for(let i = 0; i < 2; i++) { // save buffers in stereo
           const channel = event.inputBuffer.getChannelData(i);
           this.buffers[i].push(new Float32Array(channel));
         }
         this.bufferLength += bufferSize;
       };
-
       gain.connect(recorder);
       recorder.connect(this.audioContext.destination);
       this.recordingStream = stream;
     }, (err) => {
-
+      console.log('error', err);
     });
 
-    this.setState({
-      recording: true
-    });
+    this.setState({ recording: true });
     if(this.props.onRecordStart) {
       this.props.onRecordStart.call();
     }
@@ -57,13 +48,9 @@ class AudioRecorder extends Component {
 
   stopRecording() {
     this.recordingStream.getTracks()[0].stop();
-
     const audioData = encodeWAV(this.buffers, this.bufferLength, this.sampleRate);
 
-    this.setState({
-      recording: false,
-      audio: audioData
-    });
+    this.setState({ recording: false, audio: audioData, download: true });
 
     if(this.props.onChange) {
       this.props.onChange.call(null, {
@@ -71,41 +58,54 @@ class AudioRecorder extends Component {
         blob: audioData
       });
     }
+
+    this.audioFile = new Audio((window.URL || window.webkitURL).createObjectURL(audioData));
+
+    this.audioFile.addEventListener("playing", (e) => {
+      var duration = e.target.duration;
+      advance(duration, this.audioFile);
+    });
+
+    this.audioFile.addEventListener("pause", (e) => {
+      clearTimeout(this.timer);
+    });
+
+    this.audioFile.addEventListener("ended", (e) => {
+      if(this.state.playing) {
+        this.setState({ playing: false });
+      }
+      if(this.props.onEnded) {
+        this.props.onEnded.call();
+      }
+      document.getElementById("progress").style.width = '0%'
+    });
+
+    var advance = (duration, el) => {
+      this.percent = Math.min((10 / duration) * el.currentTime * 10, 100);
+      document.getElementById("progress").style.width = this.percent + '%'
+      console.log('percent = ' + this.percent + '%')
+      startTimer(duration, el);
+    }
+
+    var startTimer = (duration, el) => {
+      if(this.percent < 100) {
+        this.timer = setTimeout(() => { advance(duration, el) }, 100);
+      }
+    }
   }
 
   startPlayback() {
-    const reader = new window.FileReader();
-    reader.readAsArrayBuffer(this.state.audio);
-    reader.onloadend = () => {
-      this.audioContext.decodeAudioData(reader.result, (buffer) => {
-        const source = this.audioContext.createBufferSource();
-        source.buffer = buffer;
-        source.connect(this.audioContext.destination);
-        source.loop = this.props.loop;
-        source.start(0);
-        source.onended = this.onAudioEnded.bind(this);
-
-        this.playbackSource = source;
-      });
-
-      this.setState({
-        playing: true
-      });
-
-      if(this.props.onPlay) {
-        this.props.onPlay.call();
-      }
-    };
+    this.setState({ playing: true });
+    if(this.props.onPlay) {
+      this.props.onPlay.call();
+    }
+    this.audioFile.play()
   }
 
   stopPlayback(event) {
     if(this.state.playing) {
       event.preventDefault();
-
-      this.setState({
-        playing: false
-      });
-
+      this.setState({ playing: false });
       if(this.props.onAbort) {
         this.props.onAbort.call();
       }
@@ -114,58 +114,35 @@ class AudioRecorder extends Component {
 
   removeAudio() {
     if(this.state.audio) {
+      console.log('this.state.audio', this.state.audio)
       if(this.playbackSource) {
+        console.log('this.playbackSource', this.playbackSource)
         this.playbackSource.stop();
         delete this.playbackSource;
       }
-
-      this.setState({
-        audio: null
-      });
-
+      this.setState({ audio: null });
       if(this.props.onChange) {
         this.props.onChange.call();
       }
     }
   }
 
-  downloadAudio() {
-    const url = (window.URL || window.webkitURL).createObjectURL(this.state.audio);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'output.wav';
-    const click = document.createEvent('Event');
-    click.initEvent('click', true, true);
-    link.dispatchEvent(click);
-  }
-
-  onAudioEnded() {
-    if(this.state.playing) {
-      this.setState({ playing: false });
-    }
-
-    if(this.props.onEnded) {
-      this.props.onEnded.call();
-    }
-  }
-
   componentWillReceiveProps(nextProps) {
     if(this.state.audio && nextProps.audio !== this.state.audio) {
       this.stopPlayback();
-      this.setState({
-        audio: nextProps.audio
-      });
+      this.setState({ audio: nextProps.audio });
     }
   }
 
   render() {
     const strings = this.props.strings;
-
-    let buttonText, buttonClass = ['AudioRecorder-button'], audioButtons;
+    let buttonText;
+    let buttonClass = ['HotMic-button']
+    let recorderButtons;
     let clickHandler;
+
     if(this.state.audio) {
       buttonClass.push('hasAudio');
-
       if(this.state.playing) {
         buttonClass.push('isPlaying');
         buttonText = strings.playing;
@@ -174,16 +151,10 @@ class AudioRecorder extends Component {
         buttonText = strings.play;
         clickHandler = this.startPlayback;
       }
-
-      audioButtons = [
-        <button key="remove" className="AudioRecorder-remove" onClick={this.removeAudio.bind(this)}>{strings.remove}</button>
+      recorderButtons = [
+        <a key="download" className="HotMic-download" href={(window.URL || window.webkitURL).createObjectURL(this.state.audio)} download='recording.wav'>{strings.download}</a>,
+        <button key="remove" className="HotMic-remove" onClick={this.removeAudio.bind(this)}>{strings.remove}</button>
       ];
-
-      if(this.props.download) {
-        audioButtons.push(
-          <button key="download" className="AudioRecorder-download" onClick={this.downloadAudio.bind(this)}>{strings.download}</button>
-        );
-      }
     } else {
       if(this.state.recording) {
         buttonClass.push('isRecording');
@@ -196,24 +167,24 @@ class AudioRecorder extends Component {
     }
 
     return (
-      <div className="AudioRecorder">
-        <button
-          className={buttonClass.join(' ')}
-          onClick={clickHandler && clickHandler.bind(this)}
-          >
-          {buttonText}
+      <div className='HotMic'>
+        <div className="player">
+          <div className="progress" id="progress"></div>
+        </div>
+        <div className={"button " + (this.state.recording ? 'active ' : 'inactive ')} onClick={clickHandler && clickHandler.bind(this)}><div className="inner"></div></div>
+        {recorderButtons}
+        <button className={buttonClass.join(' ')} onClick={clickHandler && clickHandler.bind(this)}>
+          <div className={(this.state.recording ? 'show' : 'hidden')}><span></span></div> {buttonText}
         </button>
-        {audioButtons}
       </div>
     );
   }
 }
 
-AudioRecorder.propTypes = {
+HotMic.propTypes = {
   audio: PropTypes.instanceOf(Blob),
   download: PropTypes.bool,
   loop: PropTypes.bool,
-
   onAbort: PropTypes.func,
   onChange: PropTypes.func,
   onEnded: PropTypes.func,
@@ -221,7 +192,7 @@ AudioRecorder.propTypes = {
   onPlay: PropTypes.func,
   onRecordStart: PropTypes.func,
 
-  strings: React.PropTypes.shape({
+  strings: PropTypes.shape({
     play: PropTypes.string,
     playing: PropTypes.string,
     record: PropTypes.string,
@@ -231,17 +202,16 @@ AudioRecorder.propTypes = {
   })
 };
 
-AudioRecorder.defaultProps = {
+HotMic.defaultProps = {
   loop: false,
-  
   strings: {
     play: '🔊 Play',
     playing: '❚❚ Playing',
     record: '● Record',
-    recording: '● Recording',
-    remove: '✖ Remove',
-    download: '\ud83d\udcbe Save' // unicode floppy disk
+    recording: ' Recording',
+    remove: ' Record Again',
+    download: 'Save' // unicode floppy disk
   }
 };
 
-export default AudioRecorder;
+export default HotMic;

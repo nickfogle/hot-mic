@@ -49,11 +49,13 @@ export default function encodeWAV(buffers, bufferLength, sampleRate, volume = 1)
 
   writeUTFBytes(view, 36, 'data');
   view.setUint32(40, interleaved.length * 2, true);
-  
+
   interleaved.forEach((sample, index) => {
     view.setInt16(44 + (index * 2), sample * (0x7fff * volume), true);
   });
 
   const audioData = new Blob([view], { type: 'audio/wav' });
+  console.log('audioData', audioData)
+
   return audioData;
 }
